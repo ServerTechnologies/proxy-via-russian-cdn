@@ -218,9 +218,9 @@ CDN-сервис прокидывает наш трафик через себя 
 - В самом конце, на шаге 4 «Дополнительно», проконтролируйте, чтобы выгрузка логов и настройка экранирования были выключены.
 
 Скриншоты:\
-[Экран 1](https://github.com/ServerTechnologies/proxy-via-russian-cdnraw/refs/heads/main/images/cdn-ya-cloud-1)\
-[Экран 2](https://github.com/ServerTechnologies/proxy-via-russian-cdn/raw/refs/heads/main/images/cdn-ya-cloud-2)\
-[Экран 3](https://github.com/ServerTechnologies/proxy-via-russian-cdn/raw/refs/heads/main/images/cdn-ya-cloud-3)\
+[Экран 1](https://raw.githubusercontent.com/ServerTechnologies/proxy-via-russian-cdn/refs/heads/main/images/cdn-ya-cloud-1.png)\
+[Экран 2](https://raw.githubusercontent.com/ServerTechnologies/proxy-via-russian-cdn/refs/heads/main/images/cdn-ya-cloud-2.png)\
+[Экран 3](https://raw.githubusercontent.com/ServerTechnologies/proxy-via-russian-cdn/refs/heads/main/images/cdn-ya-cloud-3.png)
 
 После того как вы создадите CDN-ресурс, вас перебросит на страницу Cloud CDN, где вы увидите только что созданный CDN-ресурс. Зайдите в него — в самом низу будут «Настройки DNS». Там будут данные для создания CNAME-записи. В DNS вашего регистратора создайте CNAME-запись: в поле «Имя» укажите ваш домен, а в поле «Цель» — технический домен YC (что-то вроде sdfghjkjhgfdfgva2.gslb.yccdn.ru).\
 Настройки CDN и DNS-записи применяются не сразу — примерно через 15–30 минут всё должно заработать.
