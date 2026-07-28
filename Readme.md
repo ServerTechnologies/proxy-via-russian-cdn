@@ -33,12 +33,12 @@
 Устанавливаем веб-сервер:
 ```bash
 apt update
-apt install nginx
+apt install nginx -y
 ```
 
 Нам понадобится выпустить SSL-сертификат для нашего сайта. Для выпуска сертификата будем использовать Certbot.
 ```
-apt install snapd
+apt install snapd -y
 snap install --classic certbot
 ln -s /snap/bin/certbot /usr/local/bin/certbot
 certbot certonly --nginx
@@ -47,11 +47,18 @@ certbot certonly --nginx
 Эти команды установят Certbot и запустят процесс выпуска сертификата. В процессе вам нужно будет ввести свою почту и имя домена/поддомена, на который будет выпускаться сертификат.
 В конце вы получите две строки с расположением файлов сертификатов — их нужно сохранить. Выглядеть они будут примерно так (cdn.youdomain.com — имя вашего домена/поддомена):
 ```bash
-/etc/letsencrypt/live/cdn.youdomain.com/fullchain.pem;
-/etc/letsencrypt/live/cdn.youdomain.com/privkey.pem;
+/etc/letsencrypt/live/cdn.youdomain.com/fullchain.pem
+/etc/letsencrypt/live/cdn.youdomain.com/privkey.pem
 ```
 
-Далее нам нужно отредактировать файл конфигурации Nginx:
+Далее нам нужно отредактировать файл конфигурации Nginx. Для начала зададим переменные с путем до файлов сертификатов. Замените path-to-file на пути до соответствующих файлов:
+```bash
+export fullchainpath=/path-to-file/fullchain.pem
+export privkeypath=/path-to-file/privkey.pem
+```
+
+Внеcем изменения в файл конфишурации Nginx:
+
 ```bash
 cat << EOF > /etc/nginx/sites-available/default
 
@@ -65,7 +72,7 @@ server {
     }
 
     location / {
-        return 301 https://$host$request_uri;
+        return 301 https://\$host\$request_uri;
     }
 }
 
@@ -73,8 +80,8 @@ server {
     listen 443 ssl http2 default_server;
     listen [::]:443 ssl http2 default_server;
     server_name _;
-    ssl_certificate  /etc/letsencrypt/live/cdn.youdomain.com/fullchain.pem;
-    ssl_certificate_key  /etc/letsencrypt/live/cdn.youdomain.com/privkey.pem;
+    ssl_certificate  $fullchainpath;
+    ssl_certificate_key  $privkeypath;
 
     location = /health {
         default_type application/json;
@@ -84,10 +91,10 @@ server {
     location /api/stream {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host \$host;
         proxy_set_header Connection "";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_cache off;
@@ -104,7 +111,7 @@ server {
     location / {
         root /var/www/html;
         index index.html;
-        try_files $uri $uri/ =404;
+        try_files \$uri \$uri/ =404;
     }
 }
 EOF
@@ -121,9 +128,13 @@ nginx -t && systemctl restart nginx
 ```
 
 ### Настройка панели 3x-ui
-Далее устанавливаем панель 3x-ui. Когда дойдёт до создания сертификата для панели — если панель не работает на отдельном домене, можно использовать те же сертификаты, которые мы создавали в начале с помощью Certbot. Выберите пункт 3 «Custom certificates», вставьте имя домена и пути до файлов сертификата. Далее логинимся в панель и на вкладке «Входящие» создаём подключение.
+Далее устанавливаем панель 3x-ui. Используем для этого стандартный скрипт установки из гитхаба разработчиков:
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+```
+Когда дойдёт до создания сертификата для панели — если панель не работает на отдельном домене, можно использовать те же сертификаты, которые мы создавали в начале с помощью Certbot. Выберите пункт 3 «Custom certificates», вставьте имя домена и пути до файлов сертификата. Далее логинимся в панель и на вкладке «Входящие» создаём подключение.
 
-Идём во вкладку «Расширенный шаблон» и вставляем туда следующий код:
+Идём во вкладку «Расширенный шаблон», удаляем дефолтный конфиг и вставляем туда следующий код:
 ```bash
 {
   "listen": "127.0.0.1",
