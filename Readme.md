@@ -55,6 +55,7 @@ certbot certonly --nginx
 ```bash
 export fullchainpath=/path-to-file/fullchain.pem
 export privkeypath=/path-to-file/privkey.pem
+export secretpath=/api/stream
 ```
 
 Внеcем изменения в файл конфишурации Nginx:
@@ -88,7 +89,7 @@ server {
         return 200 '{"status":"ok","service":"media-gateway","version":"4.2.1"}';
     }
 
-    location /api/stream {
+    location $secretpath {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -118,8 +119,8 @@ EOF
 mv /var/www/html/index.nginx-debian.html /var/www/html/index.html
 ```
 
-Эта команда заменит конфигурацию по умолчанию. Обратите внимание на блоки ssl_certificate и ssl_certificate_key — тут нужно указать путь до файлов сертификатов, которые мы получили ранее с помощью Certbot. По умолчанию достаточно заменить cdn.youdomain.com на имя вашего домена.\
-Обратите внимание на пункт proxy_pass http://127.0.0.1:8080 в разделе location /api/stream. Nginx будет перенаправлять VPN-трафик на локальный порт 8080 — именно его и должен слушать Xray. Можно установить любой свободный порт, кроме 8080. Путь /api/stream тоже можно заменить на что-нибудь своё, главное — указать его потом в настройках Xray.\
+Эта команда заменит конфигурацию по умолчанию. Обратите внимание на блоки ssl_certificate и ssl_certificate_key — тут нужно указать путь до файлов сертификатов, которые мы получили ранее с помощью Certbot. За это отвечают переменные fullchainpath и privkeypath.\
+Обратите внимание на пункт proxy_pass http://127.0.0.1:8080 в разделе location $secretpath. Мы задаем переменную secretpath, в которой указываем путь. Этот путь нужно добавить в path в настройках входящего подключения в Xray. Nginx будет перенаправлять VPN-трафик на локальный порт 8080 — именно его и должен слушать Xray. Можно установить любой свободный порт, кроме 8080. По умолчани я задал путь /api/stream. Его желательно заменить на что-то свое.\
 Последняя команда переименовывает файл стандартной заглушки Nginx в index.html. Этот файл желательно заменить на свой сайт, загрузив в папку /var/www/html документ с именем index.html.
 
 Проверяем конфигурацию и перезагружаем Nginx:
