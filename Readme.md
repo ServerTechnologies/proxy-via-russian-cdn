@@ -20,6 +20,7 @@
 Так как PR свежий, старые версии ядра и клиентов не поддерживают эту функцию, поэтому перед использованием стоит обновить клиенты и версию ядра на сервере. Напомню, что панели вроде 3x-ui и подобные — это всего лишь графическая надстройка над ядром, поэтому обновлять нужно не версию панели, а именно версию ядра.
 
 ## Инструкция
+> Недавно Яндекс запретил передавать данные в теле запроса, поэтому в новых настройках данные передаются в заголовке. Так же сюда включен фикс настроек для нормального Upload. Старые настройки есть ниже.
 Сервер, который стоит за CDN и принимает трафик, называется «Источник» (Origin). Мы можем настроить каскад с сервера-источника на другой сервер — настройки для каскада такие же, как если бы мы делали каскад без CDN.
 
 Для работы нам понадобятся 2 домена/поддомена. Можно использовать несколько доменов (yourdomain.com, yourdomain-2.com), можно создать на одном домене несколько поддоменов (123.yourdomain.com, 456.yourdomain.com) — это не имеет значения.
@@ -62,6 +63,10 @@ export secretpath=/api/stream
 
 ```bash
 cat << EOF > /etc/nginx/sites-available/default
+upstream xhttp_backend {
+    server 127.0.0.1:8080;
+    keepalive 64;
+}
 
 server {
     listen 80 default_server;
@@ -81,8 +86,13 @@ server {
     listen 443 ssl http2 default_server;
     listen [::]:443 ssl http2 default_server;
     server_name _;
+    client_header_buffer_size 16k;
+    large_client_header_buffers 8 64k;
     ssl_certificate  $fullchainpath;
     ssl_certificate_key  $privkeypath;
+    keepalive_timeout 1h;
+    keepalive_requests 100000;
+    http2_max_concurrent_streams 512;
 
     location = /health {
         default_type application/json;
@@ -106,7 +116,7 @@ server {
         client_max_body_size 0;
         add_header X-Accel-Buffering no always;
         add_header Cache-Control "no-store, no-transform" always;
-        access_log /var/log/nginx/xhttp_access.log;
+        access_log off;
     }
 
     location / {
@@ -174,24 +184,24 @@ bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.
       "sessionIDLength": "",
       "seqPlacement": "",
       "seqKey": "",
-      "uplinkDataPlacement": "",
-      "uplinkDataKey": "",
-      "scMaxEachPostBytes": "",
+      "uplinkDataPlacement": "header",
+      "uplinkDataKey": "x-edge-data",
+      "scMaxEachPostBytes": "8192",
       "noSSEHeader": false,
       "scMaxBufferedPosts": 30,
       "scStreamUpServerSecs": "20-80",
-      "serverMaxHeaderBytes": 0,
+      "serverMaxHeaderBytes": 65536,
       "uplinkHTTPMethod": "GET",
       "headers": {},
-      "scMinPostsIntervalMs": "",
+      "scMinPostsIntervalMs": "10",
       "uplinkChunkSize": 0,
       "noGRPCHeader": false,
       "xmux": {
         "maxConcurrency": "0",
         "maxConnections": 2,
         "cMaxReuseTimes": 0,
-        "hMaxRequestTimes": "100-200",
-        "hMaxReusableSecs": "300-600",
+        "hMaxRequestTimes": "5000-10000",
+        "hMaxReusableSecs": "1800-3600",
         "hKeepAlivePeriod": 0
       },
       "enableXmux": true
@@ -247,3 +257,156 @@ CDN-сервис прокидывает наш трафик через себя 
 - После того как вы её вставите или отсканируете QR-код, нужно отредактировать клиента. В качестве адреса сервера укажите домен, который направлен на сервис CDN и для которого вы настраивали CNAME-запись.
 - Порт нужно заменить на 443.
 - В настройках безопасности нужно выбрать TLS. В SNI указать домен и выбрать fingerprint.
+
+
+## Если вы уже настроили подключение, до того как Яндекс внес изменения
+Вам стоит отредактировать файл конфигурации Nginx. Сделать это можно слудуюшей командой:
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+После внесения изменений, для сохранения нажите CTRL + X Y
+
+В настройках инбаунда в 3x-ui тоже надо внести изменения, откройте "Расширенный шаблон". Просто вставьте туда новые настройке и не забудьте изменить поле path.
+
+
+## Старая версия настроек. Данные в теле запроса.
+
+### Nginx. 
+Переменные:
+```bash
+export fullchainpath=/path-to-file/fullchain.pem
+export privkeypath=/path-to-file/privkey.pem
+export secretpath=/api/stream
+```
+
+Файл конфигурации и файл заглушки:
+```bash
+cat << EOF > /etc/nginx/sites-available/default
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name _;
+    ssl_certificate  $fullchainpath;
+    ssl_certificate_key  $privkeypath;
+
+    location = /health {
+        default_type application/json;
+        return 200 '{"status":"ok","service":"media-gateway","version":"4.2.1"}';
+    }
+
+    location $secretpath {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_buffer_size 32k;
+        proxy_buffers 8 32k;
+        client_max_body_size 0;
+        add_header X-Accel-Buffering no always;
+        add_header Cache-Control "no-store, no-transform" always;
+        access_log /var/log/nginx/xhttp_access.log;
+    }
+
+    location / {
+        root /var/www/html;
+        index index.html;
+        try_files \$uri \$uri/ =404;
+    }
+}
+EOF
+mv /var/www/html/index.nginx-debian.html /var/www/html/index.html
+```
+
+Перезагрузка Nginx
+```bash
+nginx -t && systemctl restart nginx
+```
+
+### Настройки для 3x-ui. Не забудьте заменить /api/stream в path.
+```bash
+{
+  "listen": "127.0.0.1",
+  "port": 8080,
+  "protocol": "vless",
+  "tag": "in-8080-tcp",
+  "settings": {
+    "clients": [],
+    "decryption": "none",
+    "encryption": "none"
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": [
+      "http",
+      "tls",
+      "quic",
+      "fakedns"
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "xhttpSettings": {
+      "path": "/api/stream",
+      "host": "",
+      "mode": "packet-up",
+      "xPaddingBytes": "100-1000",
+      "xPaddingObfsMode": true,
+      "xPaddingKey": "_dc",
+      "xPaddingHeader": "X-Cache",
+      "xPaddingPlacement": "queryInHeader",
+      "xPaddingMethod": "tokenish",
+      "sessionIDPlacement": "",
+      "sessionIDKey": "",
+      "sessionIDTable": "",
+      "sessionIDLength": "",
+      "seqPlacement": "",
+      "seqKey": "",
+      "uplinkDataPlacement": "",
+      "uplinkDataKey": "",
+      "scMaxEachPostBytes": "",
+      "noSSEHeader": false,
+      "scMaxBufferedPosts": 30,
+      "scStreamUpServerSecs": "20-80",
+      "serverMaxHeaderBytes": 0,
+      "uplinkHTTPMethod": "GET",
+      "headers": {},
+      "scMinPostsIntervalMs": "",
+      "uplinkChunkSize": 0,
+      "noGRPCHeader": false,
+      "xmux": {
+        "maxConcurrency": "0",
+        "maxConnections": 2,
+        "cMaxReuseTimes": 0,
+        "hMaxRequestTimes": "100-200",
+        "hMaxReusableSecs": "300-600",
+        "hKeepAlivePeriod": 0
+      },
+      "enableXmux": true
+    },
+    "security": "none"
+  }
+}
+```
